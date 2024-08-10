@@ -1,0 +1,272 @@
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>NightTools - Multiple Timers</title><script type="text/javascript" nonce="3ef5692b142a4420908a6375302" src="//local.adguard.org?ts=1723064496692&amp;type=content-script&amp;dmn=party.websim.ai&amp;url=https%3A%2F%2Fparty.websim.ai%2Fapi%2Fv1%2Fsites%2F5yXAmQ4P1TlFw5oeV%2Fhtml%3Fraw%3Dtrue&amp;app=com.google.Chrome&amp;css=3&amp;js=1&amp;rel=1&amp;rji=1&amp;sbe=1"></script>
+<script type="text/javascript" nonce="3ef5692b142a4420908a6375302" src="//local.adguard.org?ts=1723064496692&amp;name=AdGuard%20Assistant&amp;name=AdGuard%20Extra&amp;type=user-script"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.2.47/vue.global.min.js"></script><style>
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #1a1a2e;
+        color: #ffffff;
+        margin: 0;
+        padding: 20px;
+    }
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    h1 {
+        text-align: center;
+        color: #4a69bd;
+        text-shadow: 0 0 10px #4a69bd;
+    }
+    .timer-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 20px;
+    }
+    .timer {
+        background-color: #16213e;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .timer h2 {
+        margin-top: 0;
+        color: #4a69bd;
+    }
+    .timer-display {
+        font-size: 2em;
+        text-align: center;
+        margin: 10px 0;
+        transition: color 0.5s;
+    }
+    .timer-display.alarm {
+        animation: flash-red 1s infinite;
+    }
+    @keyframes flash-red {
+        0%, 100% { color: white; }
+        50% { color: red; }
+    }
+    .timer-controls {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 10px;
+    }
+    .timer-controls button {
+        background-color: #4a69bd;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    .timer-controls button:hover {
+        background-color: #3498db;
+    }
+    .timer input {
+        width: 100%;
+        padding: 5px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+        border: 1px solid #4a69bd;
+        background-color: #1a1a2e;
+        color: white;
+    }
+    .options {
+        margin-top: 10px;
+    }
+    .options label {
+        display: block;
+        margin-bottom: 5px;
+    }
+    .options input[type="number"] {
+        width: 60px;
+    }
+    .checkbox-wrapper {
+        display: inline-block;
+        position: relative;
+        padding-left: 35px;
+        margin-bottom: 12px;
+        cursor: pointer;
+        font-size: 16px;
+        user-select: none;
+    }
+    .checkbox-wrapper input {
+        position: absolute;
+        opacity: 0;
+        cursor: pointer;
+        height: 0;
+        width: 0;
+    }
+    .checkmark {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 25px;
+        width: 25px;
+        background-color: #eee;
+        border-radius: 5px;
+    }
+    .checkbox-wrapper:hover input ~ .checkmark {
+        background-color: #ccc;
+    }
+    .checkbox-wrapper input:checked ~ .checkmark {
+        background-color: #4a69bd;
+    }
+    .checkmark:after {
+        content: "";
+        position: absolute;
+        display: none;
+    }
+    .checkbox-wrapper input:checked ~ .checkmark:after {
+        display: block;
+    }
+    .checkbox-wrapper .checkmark:after {
+        left: 9px;
+        top: 5px;
+        width: 5px;
+        height: 10px;
+        border: solid white;
+        border-width: 0 3px 3px 0;
+        transform: rotate(45deg);
+    }
+</style></head><body>
+<div id="app" class="container">
+    <h1>Multiple Timers</h1>
+    <div class="timer-grid">
+        <div v-for="(timer, index) in timers" :key="index" class="timer">
+            <input v-model="timer.name" :placeholder="'Timer ' + (index + 1)">
+            <div class="timer-display" :class="{ 'alarm': timer.isAlarming }">{{ formatTime(timer.time) }}</div>
+            <div class="timer-controls">
+                <button @click="toggleTimer(index)">{{ timer.running ? 'Pause' : 'Start' }}</button>
+                <button @click="clearTimer(index)">Clear</button>
+            </div>
+            <div class="options">
+                <label>
+                    Duration (minutes):
+                    <input type="number" v-model.number="timer.duration" min="1" @change="updateTimerDuration(index)">
+                </label>
+                <label class="checkbox-wrapper">
+                    Sound alert
+                    <input type="checkbox" v-model="timer.sound">
+                    <span class="checkmark"></span>
+                </label>
+                <label class="checkbox-wrapper">
+                    Repeat
+                    <input type="checkbox" v-model="timer.repeat">
+                    <span class="checkmark"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const { createApp, ref, onMounted, onUnmounted } = Vue;
+
+createApp({
+    setup() {
+        const timers = ref(Array(16).fill().map(() => ({
+            name: '',
+            time: 0,
+            duration: 5,
+            running: false,
+            sound: true,
+            repeat: false,
+            isAlarming: false
+        })));
+
+        const timerIntervals = ref([]);
+        const alarmIntervals = ref([]);
+
+        const formatTime = (time) => {
+            const hours = Math.floor(time / 3600);
+            const minutes = Math.floor((time % 3600) / 60);
+            const seconds = time % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        };
+
+        const toggleTimer = (index) => {
+            const timer = timers.value[index];
+            timer.running = !timer.running;
+
+            if (timer.running) {
+                if (timer.time === 0) {
+                    timer.time = timer.duration * 60;
+                }
+                timerIntervals.value[index] = setInterval(() => {
+                    if (timer.time > 0) {
+                        timer.time--;
+                    } else {
+                        clearInterval(timerIntervals.value[index]);
+                        startAlarm(index);
+                    }
+                }, 1000);
+            } else {
+                clearInterval(timerIntervals.value[index]);
+            }
+        };
+
+        const startAlarm = (index) => {
+            const timer = timers.value[index];
+            timer.isAlarming = true;
+            if (timer.sound) {
+                playAlertSound();
+            }
+            alarmIntervals.value[index] = setTimeout(() => {
+                stopAlarm(index);
+                if (timer.repeat) {
+                    timer.time = timer.duration * 60;
+                    toggleTimer(index);
+                } else {
+                    timer.running = false;
+                }
+            }, 10000);
+        };
+
+        const stopAlarm = (index) => {
+            const timer = timers.value[index];
+            timer.isAlarming = false;
+            clearTimeout(alarmIntervals.value[index]);
+        };
+
+        const clearTimer = (index) => {
+            const timer = timers.value[index];
+            clearInterval(timerIntervals.value[index]);
+            clearTimeout(alarmIntervals.value[index]);
+            timer.time = 0;
+            timer.running = false;
+            timer.isAlarming = false;
+        };
+
+        const updateTimerDuration = (index) => {
+            const timer = timers.value[index];
+            if (!timer.running) {
+                timer.time = timer.duration * 60;
+            }
+        };
+
+        const playAlertSound = () => {
+            const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+            audio.loop = true;
+            audio.play();
+            setTimeout(() => {
+                audio.pause();
+                audio.currentTime = 0;
+            }, 10000);
+        };
+
+        onUnmounted(() => {
+            timerIntervals.value.forEach(interval => clearInterval(interval));
+            alarmIntervals.value.forEach(timeout => clearTimeout(timeout));
+        });
+
+        return {
+            timers,
+            formatTime,
+            toggleTimer,
+            clearTimer,
+            updateTimerDuration
+        };
+    }
+}).mount('#app');
+</script>
+</body></html>
